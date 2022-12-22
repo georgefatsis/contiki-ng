@@ -20,10 +20,10 @@
 args=$1
 
 if [[ ! -z "$args" ]]; then
-   echo "provided id is: ${args}" 
-   
+   echo "provided id is: ${args}"
+
    # Verify that the container id exists
-   checkId=$(docker container ls -a | grep $args | grep contiker | awk '{print $1}') 
+   checkId=$(docker container ls -a | grep $args | grep contiker | awk '{print $1}')
    if [[ -z "$checkId" ]]; then
       echo "The provided id: ${args} is not a valid contiker container id"
       exit 1
@@ -36,10 +36,10 @@ else
       echo "There is no valid contiki container. Please create a new one with contiker alias"
       exit
    fi
-   echo "The container ID: ${args} is valid contiki container id" 
+   echo "The container ID: ${args} is valid contiki container id"
 fi
 
-# Verify if the container is running 
+# Verify if the container is running
 
 containerStatus=$(docker container ps | grep $args | awk '{print $1}')
 
@@ -57,11 +57,11 @@ if [[ -z "$containerStatus" ]]; then
       echo "The container did not start, please proceed manually"
       exit 1
    fi
-   echo "The container with id: ${args} is now running" 
+   echo "The container with id: ${args} is now running"
 else
    echo "The container with id: ${args} is running"
 fi
 
 # Connecting to the container
-echo "Connecting to the container with id ${args}"                                                    
-docker container exec -ti ${args} /bin/bash 
+echo "Connecting to the container with id ${args}"
+docker container exec -ti ${args} /bin/bash
