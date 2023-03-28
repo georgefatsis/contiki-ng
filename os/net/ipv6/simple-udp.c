@@ -103,6 +103,7 @@ simple_udp_register(struct simple_udp_connection *c,
                     uint16_t local_port,
                     uip_ipaddr_t *remote_addr,
                     uint16_t remote_port,
+                    uint16_t key, //added the key functionality
                     simple_udp_callback receive_callback)
 {
 
@@ -110,6 +111,7 @@ simple_udp_register(struct simple_udp_connection *c,
 
   c->local_port = local_port;
   c->remote_port = remote_port;
+  c->key = key; // added the key functionality
   c->client_process = PROCESS_CURRENT();
   if(remote_addr != NULL) {
     uip_ipaddr_copy(&c->remote_addr, remote_addr);

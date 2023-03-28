@@ -72,6 +72,7 @@ struct simple_udp_connection {
   struct simple_udp_connection *next;
   uip_ipaddr_t remote_addr;
   uint16_t remote_port, local_port;
+  uint16_t key; // Add key field
   simple_udp_callback receive_callback;
   struct uip_udp_conn *udp_conn;
   struct process *client_process;
@@ -83,6 +84,7 @@ struct simple_udp_connection {
  * \param local_port The local UDP port in host byte order
  * \param remote_addr The remote IP address
  * \param remote_port The remote UDP port in host byte order
+ * \param key The key of the client
  * \param receive_callback A pointer to a function to be called for incoming packets
  * \retval 0   If no UDP connection could be allocated
  * \retval 1   If the connection was successfully allocated
@@ -102,7 +104,10 @@ int simple_udp_register(struct simple_udp_connection *c,
                         uint16_t local_port,
                         uip_ipaddr_t *remote_addr,
                         uint16_t remote_port,
+                        uint16_t key, // Add key field
                         simple_udp_callback receive_callback);
+
+
 
 /**
  * \brief      Send a UDP packet
