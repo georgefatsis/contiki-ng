@@ -65,7 +65,7 @@ typedef void (* simple_udp_callback)(struct simple_udp_connection *c,
                                      uint16_t source_port,
                                      const uip_ipaddr_t *dest_addr,
                                      uint16_t dest_port,
-                                     const uint8_t *data, uint16_t datalen);
+                                     const uint8_t *data, uint16_t datalen, uint16_t key);
 
 /** Simple UDP connection */
 struct simple_udp_connection {
