@@ -56,6 +56,7 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t sender_port,
          const uip_ipaddr_t *receiver_addr,
          uint16_t receiver_port,
+         uint16_t testkey,
          const uint8_t *data,
          uint16_t datalen)
 {

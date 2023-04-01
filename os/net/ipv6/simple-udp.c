@@ -169,8 +169,8 @@ PROCESS_THREAD(simple_udp_process, ev, data)
                                 UIP_HTONS(UIP_UDP_BUF->srcport),
                                 &(UIP_IP_BUF->destipaddr),
                                 UIP_HTONS(UIP_UDP_BUF->destport),
-                                databuffer, uip_datalen(),
-                                UIP_UDP_BUF->udpchksum);
+                                UIP_UDP_BUF->udpchksum,
+                                databuffer, uip_datalen());
             PROCESS_CONTEXT_END();
           }
         }
@@ -181,5 +181,6 @@ PROCESS_THREAD(simple_udp_process, ev, data)
 
   PROCESS_END();
 }
+
 /*---------------------------------------------------------------------------*/
 /** @} */

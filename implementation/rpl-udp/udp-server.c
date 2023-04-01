@@ -44,7 +44,7 @@
 #include <time.h>
 
 
-#define LOG_MODULE "App"
+#define LOG_MODULE "Server"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
 #define WITH_SERVER_REPLY  1
@@ -60,11 +60,19 @@ const bool server = true;
 --------------------------------------------------------------------------------------------------*/
 uint16_t generate_key() {
   srand(time(NULL)); // Seed the random number generator with the current time
-  uint16_t local_key = rand() % 65536; // Generate a random number between 0 and 65535 (inclusive)
-  return local_key;
+  uint16_t local_server_key = rand() % 65536; // Generate a random number between 0 and 65535 (inclusive)
+  return local_server_key;
 }
-
+#define MAX_SENDERS 10
+static uint16_t sender_keys[MAX_SENDERS];
+static uip_ipaddr_t sender_ips[MAX_SENDERS];
+static uint16_t sender_ports[MAX_SENDERS];
+static int num_senders = 0;
 bool validate = false;
+  /* Produce the PUF key */
+  uint16_t local_server_key = 90;
+  bool initialSetupPUF=true;
+//  LOG_INFO_("test %u\n", local_key);
 /*------------------------------------------------------------------------------------------------*/
 
 /*--------------------------------------------------------------------------------------------------
@@ -78,20 +86,29 @@ AUTOSTART_PROCESSES(&udp_server_process);
 
 static void
 udp_rx_callback(struct simple_udp_connection *c,
-         const uip_ipaddr_t *sender_addr,
-         uint16_t sender_port,
-         const uip_ipaddr_t *receiver_addr,
-         uint16_t receiver_port,
-         const uint8_t *data,
-         uint16_t datalen)
+                 const uip_ipaddr_t *sender_addr,
+                 uint16_t sender_port,
+                 const uip_ipaddr_t *receiver_addr,
+                 uint16_t receiver_port,
+                 uint16_t testkey,
+                 const uint8_t *data,
+                 uint16_t datalen)
 {
-  LOG_INFO("%s: Received request '%.*s' from ", name, datalen, (char *) data);
+  // Save the key and sender information to the array
+  if (num_senders < MAX_SENDERS) {
+    sender_keys[num_senders] = testkey;
+    uip_ipaddr_copy(&sender_ips[num_senders], sender_addr);
+    sender_ports[num_senders] = sender_port;
+    num_senders++;
+  }
+
+  LOG_INFO("%s: Received request '%.*s' from key %u\n", name, datalen, (char *) data, testkey);
 //  LOG_INFO("%s: Received key '%s'", name, (char *));
   LOG_INFO_6ADDR(sender_addr);
   LOG_INFO_("\n");
 #if WITH_SERVER_REPLY
   /* send back the same string to the client as an echo reply */
-  LOG_INFO("Sending response from the %s.\n",name);
+  LOG_INFO("Sending response from the %s from key %u.\n",name,local_server_key);
   simple_udp_sendto(&udp_conn, data, datalen, sender_addr);
 #endif /* WITH_SERVER_REPLY */
 }
@@ -110,12 +127,15 @@ PROCESS_THREAD(udp_server_process, ev, data){
   LOG_INFO("The mode of the node is set to: '%s'\n", name);
 
   /* Produce the PUF key */
-  uint16_t local_key = generate_key();
-  LOG_INFO_("test %u\n", local_key);
+  if(initialSetupPUF){
+    uint16_t local_server_key = generate_key();
+    LOG_INFO_("test %u\n", local_server_key);
+    initialSetupPUF=false;
+  }
 
   /* Initialize UDP connection */
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
-                      UDP_CLIENT_PORT, local_key, udp_rx_callback);
+                      UDP_CLIENT_PORT, local_server_key, udp_rx_callback);
 
   LOG_INFO("test print mode'%s'\n", name);
 
