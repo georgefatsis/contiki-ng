@@ -13,9 +13,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
-
-#define LOG_MODULE "App"
+#include <string.h>
+//-- import randomness
+#include <fcntl.h>
+#include <unistd.h>
+//--
+#define LOG_MODULE "Client"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
 #define WITH_SERVER_REPLY  1
@@ -31,15 +34,16 @@ const bool server = false;
 /*--------------------------------------------------------------------------------------------------
 --------------------------------------- Define the PUF Key -----------------------------------------
 --------------------------------------------------------------------------------------------------*/
-uint16_t generate_key() {
-  srand(time(NULL)); // Seed the random number generator with the current time
-  uint16_t local_key = rand() % 65536; // Generate a random number between 0 and 65535 (inclusive)
-  return local_key;
-}
-
+char local_client_key[20] = "initialkey";
+bool initialSetupPUF=true;
 bool validate = false;
 /*------------------------------------------------------------------------------------------------*/
+#define MAX_NODES 10
 
+char remotekeys[MAX_NODES][20];
+uint16_t sender_ports[MAX_NODES];
+uip_ipaddr_t sender_addrs[MAX_NODES];
+const uip_ipaddr_t uip_all_zeroes_addr;
 /*--------------------------------------------------------------------------------------------------
 -------------------------------------------- UDP Client --------------------------------------------
 --------------------------------------------------------------------------------------------------*/
@@ -56,13 +60,72 @@ udp_rx_callback(struct simple_udp_connection *c,
          uint16_t sender_port,
          const uip_ipaddr_t *receiver_addr,
          uint16_t receiver_port,
-         uint16_t testkey,
          const uint8_t *data,
          uint16_t datalen)
 {
-  LOG_INFO("%s: Received request '%.*s' from ", name, datalen, (char *) data);
- // LOG_INFO("%s: Received key '%s'", name, (char *) keyPub);
+
+    char data_copy[121];
+    memcpy(data_copy, data, datalen);
+    data_copy[121] = '\0';
+    char *token = strtok(data_copy, " ");
+    char remotekey[20];
+    if (token != NULL) {
+      strcpy(remotekey, token);
+    }
+    char *taken = strtok(NULL, " ");  // Get the next token
+//    char second_field[20];
+          LOG_INFO("Received message '%s'\n",taken);
+    if (taken != NULL && strcmp(taken, "validate") == 0) {
+      LOG_INFO("Received validation message\n");
+      validate=true;
+    }
+   /*verify if the key of the node is the expected or not*/
+  int i;
+  for (i = 0; i < MAX_NODES; i++) {
+    uip_ipaddr_t* ip_ptr = &sender_addrs[i];
+    if (sender_ports[i] == sender_port && memcmp(ip_ptr, sender_addr, sizeof(uip_ip6addr_t)) == 0){
+      if (strcmp(remotekeys[i], remotekey) == 0){
+        LOG_INFO("The key '%s' of the node with Port:'%u' ",remotekey,sender_port);
+        LOG_INFO_("IP: '");
+        LOG_INFO_6ADDR(sender_addr);
+        LOG_INFO_("' is verified.\n");
+        break;
+      } else{
+        LOG_INFO_("The key '%s' of the node with Port:'%u' ",remotekey,sender_port);
+        LOG_INFO_("IP: '");
+        LOG_INFO_6ADDR(sender_addr);
+        LOG_INFO_("' is not verified closing the communication with this node.\n");
+        break;
+        // THIS CAN REMOVE CONNECTIONS uip_udp_remove or uip_close
+      }
+  }else{
+    // Find an empty cell in the arrays and store the values
+    if (sender_ports[i] == 0 && uip_ipaddr_cmp(&sender_addrs[i], &uip_all_zeroes_addr)) {
+      strcpy(remotekeys[i], token);
+      sender_ports[i] = sender_port;
+      uip_ipaddr_copy(&sender_addrs[i], sender_addr);
+      LOG_INFO_("The mote with:key '%s' ,Port:'%u'  \n",remotekey,sender_port);
+      LOG_INFO_(",IP: '");
+      LOG_INFO_6ADDR(sender_addr);
+      LOG_INFO_("' was added to the list of known mote.\n");
+      break;
+     }
+    }
+  }
+
+  if(validate){
+    // Keep the same key
+     LOG_INFO("The key remains for the client '%s' the same\n",local_client_key);
+     validate=false;
+  }
+
+  // Print the request received and the details of the sender
+  LOG_INFO("%s: Received request '%.*s' from mote with: Port:'%u' key:'%s' ", name, datalen, (char*) data,sender_port, remotekey);
+  LOG_INFO_("IP: '");
   LOG_INFO_6ADDR(sender_addr);
+  LOG_INFO_("'\n");
+
+
 #if LLSEC802154_CONF_ENABLED
   LOG_INFO_(" LLSEC LV:%d", uipbuf_get_attr(UIPBUF_ATTR_LLSEC_LEVEL));
 #endif
@@ -70,12 +133,12 @@ udp_rx_callback(struct simple_udp_connection *c,
   rx_count++;
 }
 /*--------------------------------------------------------------------------------------------------
----------------------------------- Main process of the sync node -----------------------------------
+---------------------------------- Main process of the client node -----------------------------------
 --------------------------------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_client_process, ev, data)
 {
   static struct etimer periodic_timer;
-  static char str[32];
+  static char str[120];
   uip_ipaddr_t dest_ipaddr;
   static uint32_t tx_count;
   static uint32_t missed_tx_count;
@@ -86,12 +149,22 @@ PROCESS_THREAD(udp_client_process, ev, data)
   PROCESS_BEGIN();
 
   /* Produce the PUF key */
-  uint16_t local_key = generate_key();
-  LOG_INFO_("test %u\n", local_key);
+  if(initialSetupPUF){
+    int urandom_fd = open("/dev/urandom", O_RDONLY);
+    unsigned int seed_value;
+    read(urandom_fd, &seed_value, sizeof(seed_value));
+    close(urandom_fd);
+    srand(seed_value);
+    for(int i = 0; i < 10; i++) {
+      local_client_key[i] = rand() % 26 + 'a';
+    }
+    local_client_key[10] = '\0'; // terminate the string
+    LOG_INFO("The PUF key of the client is: %s\n", local_client_key);
+    initialSetupPUF=false;
+  }
 
   /* Initialize UDP connection */
-  simple_udp_register(&udp_conn, UDP_CLIENT_PORT, NULL,
-                      UDP_SERVER_PORT, local_key, udp_rx_callback);
+  simple_udp_register(&udp_conn, UDP_CLIENT_PORT, NULL, UDP_SERVER_PORT, udp_rx_callback);
 
   etimer_set(&periodic_timer, random_rand() % SEND_INTERVAL);
   while(1) {
@@ -107,10 +180,10 @@ PROCESS_THREAD(udp_client_process, ev, data)
       }
 
       /* Send to DAG root */
-      LOG_INFO("Sending request %"PRIu32" to ", tx_count);
+      LOG_INFO("Sending request %"PRIu32" with key: %s to ", tx_count, local_client_key);
       LOG_INFO_6ADDR(&dest_ipaddr);
       LOG_INFO_("\n");
-      snprintf(str, sizeof(str), "hello %" PRIu32 "", tx_count);
+      snprintf(str, sizeof(str), "%s hello %" PRIu32 "", local_client_key, tx_count);
       simple_udp_sendto(&udp_conn, str, strlen(str), &dest_ipaddr);
       tx_count++;
     } else {

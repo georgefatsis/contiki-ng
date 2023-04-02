@@ -32,6 +32,7 @@
 #include "random.h"
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
+#include "net/ipv6/uip.h"
 #include <stdint.h>
 #include <inttypes.h>
 
@@ -42,7 +43,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
+#include <string.h>
+//-- import randomness
+#include <fcntl.h>
+#include <unistd.h>
+//--
 
 #define LOG_MODULE "Server"
 #define LOG_LEVEL LOG_LEVEL_INFO
@@ -58,23 +63,18 @@ const bool server = true;
 /*--------------------------------------------------------------------------------------------------
 --------------------------------------- Define the PUF Key -----------------------------------------
 --------------------------------------------------------------------------------------------------*/
-uint16_t generate_key() {
-  srand(time(NULL)); // Seed the random number generator with the current time
-  uint16_t local_server_key = rand() % 65536; // Generate a random number between 0 and 65535 (inclusive)
-  return local_server_key;
-}
-#define MAX_SENDERS 10
-static uint16_t sender_keys[MAX_SENDERS];
-static uip_ipaddr_t sender_ips[MAX_SENDERS];
-static uint16_t sender_ports[MAX_SENDERS];
-static int num_senders = 0;
+char local_server_key[20] = "initialkey";
+bool initialSetupPUF=true;
 bool validate = false;
-  /* Produce the PUF key */
-  uint16_t local_server_key = 90;
-  bool initialSetupPUF=true;
-//  LOG_INFO_("test %u\n", local_key);
+//#define TIME_PERIOD (60 * CLOCK_SECOND)
+//#define TIME_PERIOD (3)
 /*------------------------------------------------------------------------------------------------*/
+#define MAX_NODES 10
 
+char remotekeys[MAX_NODES][20];
+uint16_t sender_ports[MAX_NODES];
+uip_ipaddr_t sender_addrs[MAX_NODES];
+const uip_ipaddr_t uip_all_zeroes_addr;
 /*--------------------------------------------------------------------------------------------------
 -------------------------------------------- UDP Server --------------------------------------------
 --------------------------------------------------------------------------------------------------*/
@@ -90,26 +90,91 @@ udp_rx_callback(struct simple_udp_connection *c,
                  uint16_t sender_port,
                  const uip_ipaddr_t *receiver_addr,
                  uint16_t receiver_port,
-                 uint16_t testkey,
                  const uint8_t *data,
                  uint16_t datalen)
 {
-  // Save the key and sender information to the array
-  if (num_senders < MAX_SENDERS) {
-    sender_keys[num_senders] = testkey;
-    uip_ipaddr_copy(&sender_ips[num_senders], sender_addr);
-    sender_ports[num_senders] = sender_port;
-    num_senders++;
+   static char str[120];
+    char data_copy[121];
+    memcpy(data_copy, data, datalen);
+    data_copy[121] = '\0';
+    char *token = strtok(data_copy, " ");
+    char remotekey[20];
+    if (token != NULL) {
+      strcpy(remotekey, token);
+    }
+
+   /*verify if the key of the node is the expected or not*/
+  int i;
+  for (i = 0; i < MAX_NODES; i++) {
+    uip_ipaddr_t* ip_ptr = &sender_addrs[i];
+    if (sender_ports[i] == sender_port && memcmp(ip_ptr, sender_addr, sizeof(uip_ip6addr_t)) == 0){
+      if (strcmp(remotekeys[i], remotekey) == 0){
+        LOG_INFO("The key '%s' of the node with Port:'%u' ",remotekey,sender_port);
+        LOG_INFO_("IP: '");
+        LOG_INFO_6ADDR(sender_addr);
+        LOG_INFO_("' is verified.\n");
+        break;
+      } else{
+        LOG_INFO_("The key '%s' of the node with Port:'%u' ",remotekey,sender_port);
+        LOG_INFO_("IP: '");
+        LOG_INFO_6ADDR(sender_addr);
+        LOG_INFO_("' is not verified closing the communication with this node.\n");
+        break;
+        // THIS CAN REMOVE CONNECTIONS uip_udp_remove or uip_close
+      }
+  }else{
+    // Find an empty cell in the arrays and store the values
+    if (sender_ports[i] == 0 && uip_ipaddr_cmp(&sender_addrs[i], &uip_all_zeroes_addr)) {
+      strcpy(remotekeys[i], token);
+      sender_ports[i] = sender_port;
+      uip_ipaddr_copy(&sender_addrs[i], sender_addr);
+      LOG_INFO_("The mote with:key '%s' ,Port:'%u'  \n",remotekey,sender_port);
+      LOG_INFO_(",IP: '");
+      LOG_INFO_6ADDR(sender_addr);
+      LOG_INFO_("' was added to the list of known mote.\n");
+      break;
+     }
+    }
   }
 
-  LOG_INFO("%s: Received request '%.*s' from key %u\n", name, datalen, (char *) data, testkey);
-//  LOG_INFO("%s: Received key '%s'", name, (char *));
+
+  // Print the request received and the details of the sender
+  LOG_INFO("%s: Received request '%.*s' from mote with: Port:'%u' key:'%s' ", name, datalen, (char*) data,sender_port, remotekey);
+  LOG_INFO_("IP: '");
   LOG_INFO_6ADDR(sender_addr);
-  LOG_INFO_("\n");
+  LOG_INFO_("'\n");
+
 #if WITH_SERVER_REPLY
+
+  // send validation message
+  if(validate) {
+    int i;
+    for (i = 0; i < MAX_NODES; i++) {
+      uip_ipaddr_t* valid_ip_pt = &sender_addrs[i];
+      //uint16_t valid_sender_port=sender_ports[i];
+      char valid_remotekey[20];
+      strcpy(valid_remotekey,remotekeys[i]);
+      LOG_INFO("Sending request to validate\n");
+      LOG_INFO_6ADDR(valid_ip_pt);
+      LOG_INFO_("\n");
+      snprintf(str, sizeof(str), "%s validate ", local_server_key);
+      simple_udp_sendto(&udp_conn, str, strlen(str), valid_ip_pt);
+    }
+    validate = false;
+  }
+
+
   /* send back the same string to the client as an echo reply */
-  LOG_INFO("Sending response from the %s from key %u.\n",name,local_server_key);
-  simple_udp_sendto(&udp_conn, data, datalen, sender_addr);
+  LOG_INFO("Sending response from the %s with key %s.\n",name,local_server_key);
+
+  // preparing the reply:
+  char new_data[121];
+  char new_data_copy[121];
+  memcpy(new_data_copy, data, datalen);
+  sprintf(new_data, "%s %s", local_server_key, new_data_copy + strlen(remotekey) + 1);
+  size_t new_data_len = strlen(new_data);
+  simple_udp_sendto(&udp_conn, new_data, new_data_len, sender_addr);
+
 #endif /* WITH_SERVER_REPLY */
 }
 
@@ -117,6 +182,7 @@ udp_rx_callback(struct simple_udp_connection *c,
 ---------------------------------- Main process of the root node -----------------------------------
 --------------------------------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data){
+  static struct etimer et;
 
   PROCESS_BEGIN();
 
@@ -125,19 +191,29 @@ PROCESS_THREAD(udp_server_process, ev, data){
 
   // Print the functionality of the process
   LOG_INFO("The mode of the node is set to: '%s'\n", name);
-
   /* Produce the PUF key */
   if(initialSetupPUF){
-    uint16_t local_server_key = generate_key();
-    LOG_INFO_("test %u\n", local_server_key);
+    int urandom_fd = open("/dev/urandom", O_RDONLY);
+    unsigned int seed_value;
+    read(urandom_fd, &seed_value, sizeof(seed_value));
+    close(urandom_fd);
+    srand(seed_value);
+    for(int i = 0; i < 10; i++) {
+      local_server_key[i] = rand() % 26 + 'a';
+    }
+    local_server_key[10] = '\0'; // terminate the string
+    LOG_INFO("The PUF key of the client is: %s\n", local_server_key);
     initialSetupPUF=false;
   }
-
   /* Initialize UDP connection */
-  simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
-                      UDP_CLIENT_PORT, local_server_key, udp_rx_callback);
-
-  LOG_INFO("test print mode'%s'\n", name);
+  simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL, UDP_CLIENT_PORT, udp_rx_callback);
+   // random time frame to validate the nodes
+  etimer_set(&et, random_rand() % CLOCK_SECOND * 180);
+  while(1) {
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+      validate=true;
+      etimer_set(&et, random_rand() % CLOCK_SECOND * 180);
+    }
 
 
 
