@@ -1,7 +1,9 @@
 /*--------------------------------------------------------------------------------------------------
 ------------------------------------------ Description ---------------------------------------------
 --------------------------------------------------------------------------------------------------*/
-
+//
+// version: 1.0 4Apr23
+//
 // The following code is the firmware for the cooja mote to function as a malicious client.
 // The client has the following functionality:
 // * Calculates the PUF key based on a pseudorandom unix machine.

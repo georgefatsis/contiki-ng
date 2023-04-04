@@ -1,8 +1,10 @@
 /*--------------------------------------------------------------------------------------------------
 ------------------------------------------ Description ---------------------------------------------
 --------------------------------------------------------------------------------------------------*/
-
-// The following code is the firmware for the cooja mote to function as a client. The client has the
+//
+// version: 1.0 4Apr23
+//
+// The following code is the firmware for the Cooja mote to function as a client. The client has the
 // following functionality:
 // * Calculates the PUF key based on a pseudorandom unix machine.
 // * Initializes the connection with the sync mote
@@ -14,7 +16,7 @@
 //   change it.
 // * Additionally, each time the mote receives a new message from another mote it saves the
 //   IP, Port, Key of the sender in arrays. Each time there is a new message it searches in the
-//   arrays to verify if the mote had send a message in the past. If mote had send a message in the
+//   arrays to verify if the mote had sent a message in the past. If mote had sent a message in the
 //   past and the key is matching then the message is received. Otherwise, the mote closes the
 //   connection.
 // * Finally, the mote after some random time performs the same actions again.
@@ -122,7 +124,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   if (token != NULL) {
     strcpy(remotekey, token);
   }
-  // The following code block gets the message, and validates if there is validation message send
+  // The following code block gets the message, and validates if there is a validation message send
   char *taken = strtok(NULL, " ");
   LOG_INFO("Received message '%s'\n",taken);
   if (taken != NULL && strcmp(taken, "validate") == 0) {
@@ -135,7 +137,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   for (i = 0; i < MAX_NODES; i++) {
     // Get the IP of the sender
     uip_ipaddr_t* ip_ptr = &sender_addrs[i];
-    // Perform a validation if the sender IP and port already exists in the aforementioned arrays
+    // Perform a validation if the sender IP and port already exist in the aforementioned arrays
     if (sender_ports[i] == sender_port && memcmp(ip_ptr, sender_addr, sizeof(uip_ip6addr_t)) == 0){
       // Verify if the remote key is validated or not
       if (strcmp(remotekeys[i], remotekey) == 0){
@@ -152,14 +154,14 @@ udp_rx_callback(struct simple_udp_connection *c,
         LOG_INFO_("IP: '");
         LOG_INFO_6ADDR(sender_addr);
         LOG_INFO_("' is not verified closing the communication with this node.\n");
-        // drop the connection with no further processing
+        // Drop the connection with no further processing
         return;
         break;
       }
   }
   else{
-    // In this case the node has send message for first time, saving in the arrays the IP,port
-    // and key of the node. The values are stored in an empty cell in the arrays
+    // In this case the node has sent a message for the first time, saving in the arrays the IP, port
+    // and the key of the node. The values are stored in an empty cell in the arrays
     if (sender_ports[i] == 0 && uip_ipaddr_cmp(&sender_addrs[i], &uip_all_zeroes_addr)) {
       strcpy(remotekeys[i], token);
       sender_ports[i] = sender_port;
@@ -174,8 +176,8 @@ udp_rx_callback(struct simple_udp_connection *c,
   }
 
   // Validation code block, in case the Server sends a validate message this node will keep its
-  // original PUF key. Since the code is working with random generator instead of a real PUF
-  // we need to keep the key the same.
+  // original PUF key. Since the code is working with a random generator instead of a real PUF
+  //We need to keep the key the same.
   if(validate){
     LOG_INFO("The key remains for the client '%s' the same\n",local_client_key);
     validate=false;
@@ -249,7 +251,7 @@ PROCESS_THREAD(udp_client_process, ev, data){
                  tx_count, rx_count, missed_tx_count);
       }
 
-      // Print the message in the log that will be send to the other motes
+      // Print the message in the log that will be sent to the other motes
       LOG_INFO("Sending request %"PRIu32" with key: %s to ", tx_count, local_client_key);
       LOG_INFO_6ADDR(&dest_ipaddr);
       LOG_INFO_("\n");

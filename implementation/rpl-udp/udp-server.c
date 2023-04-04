@@ -29,19 +29,21 @@
 /*--------------------------------------------------------------------------------------------------
 ------------------------------------------ Description ---------------------------------------------
 --------------------------------------------------------------------------------------------------*/
-
-// The following code is the firmware for the cooja mote to function as a server. The server has the
+//
+// version: 1.0 4Apr23
+//
+// The following code is the firmware for the Cooja mote to function as a server. The server has the
 // following functionality:
 // * Calculates the PUF key based on a pseudorandom unix machine.
 // * Starts the connection and waits for messages from the clients
 // * Each time the mote receives a new message from another mote it saves the
 //   IP, Port, Key of the sender in arrays. Each time there is a new message it searches in the
-//   arrays to verify if the mote had send a message in the past. If mote had send a message in the
-//   past and the key is matching then the message is received, and replies back with the same
+//   arrays to verify if the mote had sent a message in the past. If mote had sent a message in the
+//   past and the key is matching then the message is received and replies with the same
 //   message using his key. Otherwise, the mote closes the connection.
 // * At a random time frame it sends a validation message to the other nodes, then the nodes
-//   calculate their PUF and respond back.
-// * Additionally,if the server receives a validation message, then it calculates his PUF Key and
+//   Calculate their PUF and respond.
+// * Additionally, if the server receives a validation message, then it calculates his PUF Key and
 //   replies back.
 
 /*--------------------------------------------------------------------------------------------------
@@ -150,7 +152,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   for (i = 0; i < MAX_NODES; i++) {
     // Get the IP of the sender
     uip_ipaddr_t* ip_ptr = &sender_addrs[i];
-    // Perform a validation if the sender IP and port already exists in the aforementioned arrays
+    // Perform a validation if the sender IP and port already exist in the aforementioned arrays
     if (sender_ports[i] == sender_port && memcmp(ip_ptr, sender_addr, sizeof(uip_ip6addr_t)) == 0){
       // Verify if the remote key is validated or not
       if (strcmp(remotekeys[i], remotekey) == 0){
@@ -167,14 +169,14 @@ udp_rx_callback(struct simple_udp_connection *c,
         LOG_INFO_("IP: '");
         LOG_INFO_6ADDR(sender_addr);
         LOG_INFO_("' is not verified closing the communication with this node.\n");
-        // drop the connection with no further processing
+        // Drop the connection with no further processing
         return;
         break;
       }
   }
   else{
-    // In this case the node has send message for first time, saving in the arrays the IP,port
-    // and key of the node. The values are stored in an empty cell in the arrays
+    // In this case the node has sent a message for the first time, saving in the arrays the IP, port
+    // and the key of the node. The values are stored in an empty cell in the arrays
     if (sender_ports[i] == 0 && uip_ipaddr_cmp(&sender_addrs[i], &uip_all_zeroes_addr)) {
       strcpy(remotekeys[i], token);
       sender_ports[i] = sender_port;
@@ -188,7 +190,7 @@ udp_rx_callback(struct simple_udp_connection *c,
     }
   }
 
-  // The following code block gets the message, and validates if there is validation message send
+  // The following code block gets the message, and validates if there is a validation message send
   char *taken = strtok(NULL, " ");
   LOG_INFO("Received message '%s'\n",taken);
   if (taken != NULL && strcmp(taken, "validate") == 0) {
@@ -197,8 +199,8 @@ udp_rx_callback(struct simple_udp_connection *c,
   }
 
   // Validation code block, in case the server receives a validate message this node will keep its
-  // original PUF key. Since the code is working with random generator instead of a real PUF
-  // we need to keep the key the same.
+  // original PUF key. Since the code is working with a random generator instead of a real PUF
+  // We need to keep the key the same.
   if(servervalidate){
     LOG_INFO("The key remains for the server '%s' the same\n",local_server_key);
     servervalidate=false;
@@ -212,7 +214,7 @@ udp_rx_callback(struct simple_udp_connection *c,
 
 #if WITH_SERVER_REPLY
 
-  // send validation message
+  // Send validation message
   if(validate) {
     int i;
     for (i = 0; i < MAX_NODES; i++) {
@@ -234,7 +236,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   // send back the same string to the client as an echo reply
   LOG_INFO("Sending response from the '%s' with key '%s'.\n",name,local_server_key);
 
-  // preparing the reply with the server key:
+  //Preparing the reply with the server key:
   char new_data[121];
   char new_data_copy[121];
   memcpy(new_data_copy, data, datalen);
@@ -281,7 +283,7 @@ PROCESS_THREAD(udp_server_process, ev, data){
   // Initialize UDP connection
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL, UDP_CLIENT_PORT, udp_rx_callback);
 
-  // At a random time frame to send validation message to the nodes
+  // At a random time frame to send a validation message to the nodes
   etimer_set(&et, random_rand() % CLOCK_SECOND * 320);
   while(1) {
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
